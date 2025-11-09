@@ -151,18 +151,49 @@ export default function MermaidPreview({ onCopy }: MermaidPreviewProps) {
       const svgElement = previewRef.current.querySelector('svg');
       if (!svgElement) {
         console.error('SVG element not found');
+        alert('복사할 이미지를 찾을 수 없습니다.');
         return;
       }
 
-      // SVG를 문자열로 변환
-      const svgString = new XMLSerializer().serializeToString(svgElement);
+      // 🎯 고해상도를 위한 스케일 팩터 (3배)
+      const SCALE_FACTOR = 3;
       
-      // SVG의 크기 정보 추출
-      const svgWidth = svgElement.getAttribute('width') || svgElement.viewBox?.baseVal?.width || 1200;
-      const svgHeight = svgElement.getAttribute('height') || svgElement.viewBox?.baseVal?.height || 800;
+      // SVG의 실제 렌더링 크기 가져오기
+      const boundingRect = svgElement.getBoundingClientRect();
+      const baseWidth = Math.round(boundingRect.width) || 1200;
+      const baseHeight = Math.round(boundingRect.height) || 800;
+      
+      // 실제 캔버스 크기는 SCALE_FACTOR배
+      const canvasWidth = baseWidth * SCALE_FACTOR;
+      const canvasHeight = baseHeight * SCALE_FACTOR;
+      
+      // SVG를 복제하여 수정 (원본에 영향 없도록)
+      const clonedSvg = svgElement.cloneNode(true) as SVGElement;
+      
+      // SVG의 viewBox 확인 (비율 유지를 위해)
+      const viewBox = svgElement.viewBox?.baseVal;
+      
+      // 명시적 크기 설정
+      clonedSvg.setAttribute('width', baseWidth.toString());
+      clonedSvg.setAttribute('height', baseHeight.toString());
+      
+      // viewBox 설정 (기존 viewBox가 있으면 유지, 없으면 생성)
+      if (viewBox && viewBox.width > 0 && viewBox.height > 0) {
+        clonedSvg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+      } else {
+        clonedSvg.setAttribute('viewBox', `0 0 ${baseWidth} ${baseHeight}`);
+      }
+      
+      // SVG를 문자열로 변환
+      const svgString = new XMLSerializer().serializeToString(clonedSvg);
       
       // SVG를 data URL로 변환
       const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+      
+      // 디버깅용 로그
+      console.log('Original size:', baseWidth, 'x', baseHeight);
+      console.log('Canvas size (high-res):', canvasWidth, 'x', canvasHeight);
+      console.log('Scale factor:', SCALE_FACTOR);
       
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -171,34 +202,51 @@ export default function MermaidPreview({ onCopy }: MermaidPreviewProps) {
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const width = typeof svgWidth === 'string' ? parseInt(svgWidth) : svgWidth;
-            const height = typeof svgHeight === 'string' ? parseInt(svgHeight) : svgHeight;
+
+            // 🎨 고해상도 캔버스
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
             
-            canvas.width = width || 1200;
-            canvas.height = height || 800;
+            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
             
             const ctx = canvas.getContext('2d');
             if (ctx) {
+              // 🎨 고품질 렌더링 설정
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              
               // 배경을 흰색으로 설정
               ctx.fillStyle = '#ffffff';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               
-              // 이미지 그리기
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              // SCALE_FACTOR배 크기로 이미지 그리기
+              ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
               
-              // Canvas를 PNG로 변환하여 클립보드에 복사
+              // 🎯 Canvas를 PNG로 변환하여 클립보드에 복사 (무손실, 고품질)
               canvas.toBlob(async (blob) => {
                 if (blob) {
                   const arrayBuffer = await blob.arrayBuffer();
-                  const result = await window.electronAPI?.invoke('mermaid:copyToClipboard', Array.from(new Uint8Array(arrayBuffer)));
+                  // ArrayBuffer를 Uint8Array로 변환하여 배열로 전달
+                  const uint8Array = new Uint8Array(arrayBuffer);
+                  const result = await window.electronAPI?.invoke(
+                    'mermaid:copyToClipboard', 
+                    Array.from(uint8Array), 
+                    'image/png'  // 🎯 PNG 형식 사용
+                  );
+                  
                   if (result?.success) {
+                    console.log('✅ Copy successful (PNG, ' + SCALE_FACTOR + 'x resolution)');
                     onCopy?.();
                   } else {
-                    console.error('Copy failed:', result?.error);
+                    console.error('❌ Copy failed:', result?.error);
+                    alert('클립보드 복사에 실패했습니다: ' + (result?.error || '알 수 없는 오류'));
                   }
+                } else {
+                  console.error('Failed to create blob from canvas');
+                  alert('이미지 변환에 실패했습니다.');
                 }
                 resolve();
-              }, 'image/png');
+              }, 'image/png'); // 🎯 PNG 형식, 품질 손실 없음
             } else {
               reject(new Error('Canvas context not available'));
             }
@@ -209,13 +257,27 @@ export default function MermaidPreview({ onCopy }: MermaidPreviewProps) {
         
         img.onerror = (error) => {
           console.error('Image load failed:', error);
+          console.error('SVG data URL (first 200 chars):', svgDataUrl.substring(0, 200));
+          console.error('SVG string (first 500 chars):', svgString.substring(0, 500));
           reject(new Error('Failed to load SVG image'));
         };
+        
+        // SVG 문자열이 유효한지 간단히 확인
+        if (!svgString || svgString.trim().length === 0) {
+          reject(new Error('SVG string is empty'));
+          return;
+        }
+        
+        if (!svgString.includes('<svg')) {
+          reject(new Error('Invalid SVG string'));
+          return;
+        }
         
         img.src = svgDataUrl;
       });
     } catch (error: any) {
       console.error('Copy to clipboard failed:', error);
+      alert('클립보드 복사 중 오류가 발생했습니다: ' + error.message);
     }
   };
 
@@ -266,4 +328,3 @@ export default function MermaidPreview({ onCopy }: MermaidPreviewProps) {
     </div>
   );
 }
-

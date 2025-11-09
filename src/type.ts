@@ -182,6 +182,7 @@ interface PromptMessage {
   content: string;
   timestamp: Date;
   codeDiff?: string; // 생성된 코드 변경사항
+  originalCode?: string; // 원본 코드 (diff 표시용)
 }
 
 interface PromptHistory {

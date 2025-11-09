@@ -691,18 +691,133 @@ function registerMermaidHandlers() {
     }
   });
 
+  ipcMain.handle('mermaid:deleteProject', async (event, projectId) => {
+    try {
+      const projects = mermaidStore.get('projects', {});
+      if (projects[projectId]) {
+        delete projects[projectId];
+        mermaidStore.set('projects', projects);
+        console.log('Project deleted:', projectId);
+        return { success: true };
+      } else {
+        console.warn('Project not found:', projectId);
+        return { success: false, error: 'Project not found' };
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // ChatGPT API 키 저장/로드 핸들러
+  ipcMain.handle('mermaid:saveApiKey', async (event, apiKey) => {
+    try {
+      console.log('Saving ChatGPT API key...');
+      mermaidStore.set('chatgptApiKey', apiKey);
+      console.log('ChatGPT API key saved successfully');
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving API key:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('mermaid:loadApiKey', async () => {
+    try {
+      console.log('Loading ChatGPT API key...');
+      const apiKey = mermaidStore.get('chatgptApiKey', '');
+      console.log('ChatGPT API key loaded:', apiKey ? '***' + apiKey.slice(-4) : 'not found');
+      return { success: true, apiKey };
+    } catch (error) {
+      console.error('Error loading API key:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('mermaid:processPrompt', async (event, { projectId, prompt, currentCode, history }) => {
     try {
-      // TODO: 실제 LLM API 연동
-      // 현재는 간단한 응답만 반환
-      const response = {
-        message: '프롬프트가 처리되었습니다. (LLM 연동 필요)',
-        code: currentCode, // 실제로는 LLM이 생성한 코드
+      const apiKey = mermaidStore.get('chatgptApiKey', '');
+      if (!apiKey) {
+        return {
+          success: false,
+          error: 'ChatGPT API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.',
+        };
+      }
+
+      // ChatGPT API 호출
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that generates and modifies Mermaid.js diagram code. Always respond with valid Mermaid.js syntax. When modifying existing code, preserve the structure and only make the requested changes.',
+        },
+        ...(history || []).map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+        {
+          role: 'user',
+          content: `Current Mermaid code:\n\`\`\`mermaid\n${currentCode}\n\`\`\`\n\nUser request: ${prompt}\n\nPlease provide the updated Mermaid code in a code block.`,
+        },
+      ];
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: messages,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `API 요청 실패: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const assistantMessage = data.choices[0]?.message?.content || '';
+
+      // Mermaid 코드 추출 (코드 블록에서)
+      let newCode = currentCode;
+      const codeBlockMatch = assistantMessage.match(/```(?:mermaid)?\n([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        newCode = codeBlockMatch[1].trim();
+      } else {
+        // 코드 블록이 없으면 메시지에서 Mermaid 키워드로 시작하는 라인 찾기
+        const lines = assistantMessage.split('\n');
+        const mermaidKeywords = ['graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'gantt', 'pie', 'gitgraph', 'journey'];
+        const mermaidLines = lines.filter((line) => {
+          const trimmed = line.trim();
+          return trimmed && mermaidKeywords.some(keyword => trimmed.startsWith(keyword));
+        });
+        if (mermaidLines.length > 0) {
+          // Mermaid 키워드로 시작하는 라인부터 끝까지 추출
+          const startIndex = lines.findIndex((line) => {
+            const trimmed = line.trim();
+            return trimmed && mermaidKeywords.some(keyword => trimmed.startsWith(keyword));
+          });
+          if (startIndex !== -1) {
+            newCode = lines.slice(startIndex).join('\n').trim();
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: assistantMessage,
+        code: newCode,
+        originalCode: currentCode,
       };
-      return response;
     } catch (error) {
       console.error('Error processing prompt:', error);
-      throw error;
+      return {
+        success: false,
+        error: error?.message || '프롬프트 처리 중 오류가 발생했습니다.',
+      };
     }
   });
 
@@ -754,18 +869,70 @@ function registerMermaidHandlers() {
     }
   });
 
-  ipcMain.handle('mermaid:copyToClipboard', async (event, pngData) => {
+  // 🎯 수정된 클립보드 복사 핸들러 - PNG 형식으로 개선
+  ipcMain.handle('mermaid:copyToClipboard', async (event, imageData, mimeType = 'image/png') => {
     try {
-      // PNG 데이터를 Buffer로 변환
-      const buffer = Buffer.from(pngData);
+      console.log('=== Clipboard Copy Debug ===');
+      console.log('MIME Type:', mimeType);
+      console.log('Data type:', Array.isArray(imageData) ? 'Array' : typeof imageData);
+      console.log('Data length:', imageData?.length);
+      
+      // 이미지 데이터를 Buffer로 변환
+      let buffer;
+      if (Array.isArray(imageData)) {
+        buffer = Buffer.from(imageData);
+      } else if (Buffer.isBuffer(imageData)) {
+        buffer = imageData;
+      } else {
+        buffer = Buffer.from(imageData);
+      }
+      
+      console.log('Buffer length:', buffer.length);
+      
+      // 🎯 PNG 이미지를 NativeImage로 생성
       const image = nativeImage.createFromBuffer(buffer);
       
-      // PNG 형식으로 클립보드에 복사
-      clipboard.writeImage(image);
+      // 이미지가 유효한지 확인
+      if (image.isEmpty()) {
+        console.error('❌ Image is empty after creation');
+        return { success: false, error: 'Image is empty' };
+      }
+      
+      const size = image.getSize();
+      console.log('✅ Image created successfully - Size:', size.width, 'x', size.height);
+      
+      // 🎯 클립보드에 이미지 복사 (다중 형식 지원)
+      clipboard.write({
+        image: image
+      });
+      
+      // 클립보드가 제대로 설정되었는지 확인
+      const clipboardImage = clipboard.readImage();
+      if (clipboardImage.isEmpty()) {
+        console.error('❌ Clipboard image is empty after write, retrying...');
+        
+        // 재시도
+        clipboard.writeImage(image);
+        const retryImage = clipboard.readImage();
+        
+        if (retryImage.isEmpty()) {
+          console.error('❌ Failed to write image to clipboard after retry');
+          return { success: false, error: 'Failed to write image to clipboard' };
+        }
+        
+        console.log('✅ Image written to clipboard successfully on retry');
+      } else {
+        console.log('✅ Image written to clipboard successfully');
+      }
+      
+      const clipboardSize = clipboardImage.getSize();
+      console.log('Clipboard image size:', clipboardSize.width, 'x', clipboardSize.height);
+      console.log('===========================');
       
       return { success: true };
     } catch (error) {
-      console.error('Error copying to clipboard:', error);
+      console.error('❌ Error copying to clipboard:', error);
+      console.error('Error stack:', error.stack);
       return { success: false, error: error.message };
     }
   });
@@ -981,7 +1148,9 @@ async function updateMCPConfig(categoryId, target) {
 }
 
 // IPC 핸들러 등록
+console.log('Registering Mermaid IPC handlers...');
 registerMermaidHandlers();
+console.log('Mermaid IPC handlers registered successfully');
 
 app.whenReady().then(createWindow);
 

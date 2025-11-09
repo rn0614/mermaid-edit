@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Mermaid Graph Tool API
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  saveChatGPTApiKey: (apiKey) => ipcRenderer.invoke('mermaid:saveApiKey', apiKey),
+  loadChatGPTApiKey: () => ipcRenderer.invoke('mermaid:loadApiKey'),
   
   // IPC 이벤트 리스너
   onTrayCategoryChanged: (callback) => {

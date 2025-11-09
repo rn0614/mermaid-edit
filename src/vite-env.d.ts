@@ -32,6 +32,8 @@ declare global {
       
       // Mermaid Graph Tool API
       invoke: (channel: string, ...args: any[]) => Promise<any>;
+      saveChatGPTApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>;
+      loadChatGPTApiKey: () => Promise<{ success: boolean; apiKey?: string; error?: string }>;
       
       // IPC 이벤트 리스너
       onTrayCategoryChanged: (callback: () => void) => void;

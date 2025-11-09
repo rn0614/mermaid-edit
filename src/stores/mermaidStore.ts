@@ -4,9 +4,9 @@ import type { MermaidProject, MermaidRenderResult, PromptHistory, ProjectSnapsho
 interface MermaidStore extends MermaidAppState {
   // Actions
   setCurrentProject: (project: MermaidProject | null) => void;
-  updateProjectCode: (code: string) => void;
+  updateProjectCode: (code: string, originalCode?: string) => void;
   createProject: (name: string, code?: string) => MermaidProject;
-  deleteProject: (id: string) => void;
+  deleteProject: (id: string) => Promise<void>;
   setRenderResult: (result: MermaidRenderResult) => void;
   setIsRendering: (isRendering: boolean) => void;
   setError: (error: string | null) => void;
@@ -14,6 +14,8 @@ interface MermaidStore extends MermaidAppState {
   addSnapshot: (projectId: string, snapshot: ProjectSnapshot) => void;
   loadProjects: () => Promise<void>;
   saveProject: (project: MermaidProject) => Promise<void>;
+  lastOriginalCode: string | null; // diff 표시용 원본 코드
+  setLastOriginalCode: (code: string | null) => void;
 }
 
 export const useMermaidStore = create<MermaidStore>((set, get) => ({
@@ -25,13 +27,14 @@ export const useMermaidStore = create<MermaidStore>((set, get) => ({
   renderResult: null,
   isRendering: false,
   error: null,
+  lastOriginalCode: null,
 
   // Actions
   setCurrentProject: (project) => {
     set({ currentProject: project });
   },
 
-  updateProjectCode: (code) => {
+  updateProjectCode: (code, originalCode) => {
     const { currentProject } = get();
     if (currentProject) {
       const updatedProject: MermaidProject = {
@@ -46,8 +49,13 @@ export const useMermaidStore = create<MermaidStore>((set, get) => ({
           ...get().projects,
           [updatedProject.id]: updatedProject,
         },
+        lastOriginalCode: originalCode || null,
       });
     }
+  },
+
+  setLastOriginalCode: (code) => {
+    set({ lastOriginalCode: code });
   },
 
   createProject: (name, code = 'graph TD\n    A[Start] --> B[End]') => {
@@ -73,15 +81,25 @@ export const useMermaidStore = create<MermaidStore>((set, get) => ({
     return newProject;
   },
 
-  deleteProject: (id) => {
-    const { projects, currentProject } = get();
-    const updatedProjects = { ...projects };
-    delete updatedProjects[id];
-    
-    set({
-      projects: updatedProjects,
-      currentProject: currentProject?.id === id ? null : currentProject,
-    });
+  deleteProject: async (id) => {
+    try {
+      // IPC를 통해 프로젝트 삭제
+      await window.electronAPI?.invoke('mermaid:deleteProject', id);
+      
+      // 상태에서도 삭제
+      const { projects, currentProject } = get();
+      const updatedProjects = { ...projects };
+      delete updatedProjects[id];
+      
+      set({
+        projects: updatedProjects,
+        currentProject: currentProject?.id === id ? null : currentProject,
+      });
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      set({ error: '프로젝트를 삭제하는데 실패했습니다.' });
+      throw error;
+    }
   },
 
   setRenderResult: (result) => {

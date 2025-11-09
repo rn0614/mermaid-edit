@@ -52,53 +52,17 @@ export default function MermaidEditor() {
     toast.success('새 프로젝트가 생성되었습니다.');
   };
 
-  const handleDeleteProject = () => {
+  const handleDeleteProject = async () => {
     if (projectToDelete) {
-      deleteProject(projectToDelete);
-      setShowDeleteModal(false);
-      setProjectToDelete(null);
-      toast.success('프로젝트가 삭제되었습니다.');
-    }
-  };
-
-  const handleExportSVG = async () => {
-    if (!currentProject) return;
-    
-    try {
-      // 렌더러에서 SVG 생성
-      const mermaid = await import('mermaid');
-      const { svg } = await mermaid.default.render('export-diagram', currentProject.code);
-      
-      // 파일 저장 다이얼로그 표시
-      const result = await window.electronAPI?.invoke('mermaid:saveSVGFile', svg);
-      
-      if (result?.success) {
-        toast.success('SVG 파일이 저장되었습니다.');
+      try {
+        await deleteProject(projectToDelete);
+        setShowDeleteModal(false);
+        setProjectToDelete(null);
+        toast.success('프로젝트가 삭제되었습니다.');
+      } catch (error) {
+        console.error('Failed to delete project:', error);
+        toast.error('프로젝트 삭제에 실패했습니다.');
       }
-    } catch (error: any) {
-      toast.error(`내보내기 실패: ${error.message}`);
-    }
-  };
-
-  const handleExportPNG = async () => {
-    if (!currentProject) return;
-    
-    try {
-      // 렌더러에서 SVG 생성
-      const mermaid = await import('mermaid');
-      const { svg } = await mermaid.default.render('export-diagram-png', currentProject.code);
-      
-      // SVG를 PNG로 변환 (렌더러에서 처리)
-      // TODO: 실제 PNG 변환 로직 구현 필요
-      toast.info('PNG 내보내기는 준비 중입니다. 현재는 SVG로 저장됩니다.');
-      
-      const result = await window.electronAPI?.invoke('mermaid:saveSVGFile', svg);
-      
-      if (result?.success) {
-        toast.success('SVG 파일이 저장되었습니다.');
-      }
-    } catch (error: any) {
-      toast.error(`내보내기 실패: ${error.message}`);
     }
   };
 
@@ -147,15 +111,6 @@ export default function MermaidEditor() {
         {currentProject && (
           <>
             <div style={{ flex: 1 }} />
-            <Dropdown>
-              <Dropdown.Toggle variant="outline-light" size="sm">
-                내보내기
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={handleExportSVG}>SVG로 저장</Dropdown.Item>
-                <Dropdown.Item onClick={handleExportPNG}>PNG로 저장</Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown>
             <Button
               variant="outline-danger"
               size="sm"
