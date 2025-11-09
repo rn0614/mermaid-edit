@@ -12,8 +12,12 @@ npm run electron-build
 ```
 2. dist-electron/win-unpacked/Mermaid Graph Tool 실행
 
-3. 
-
+3-1. 새프로젝트로 프로젝트 생성
+<img width="3" height="2" alt="image" src="https://github.com/user-attachments/assets/8f23a221-44f5-4e14-bca2-f5f63dbf1de8" />
+3-2. chatgpt key 등록
+<img width="1384" height="879" alt="image" src="https://github.com/user-attachments/assets/6d7fef60-0af8-4341-92a4-a4e53a370ecc" />
+3-3 프롬프트에서 변경할 내용 입력
+<img width="1379" height="772" alt="image" src="https://github.com/user-attachments/assets/abe44810-0377-4e58-904c-43558973af05" />
 
 
 
