@@ -1,0 +1,79 @@
+{
+  "name": "mermaid-graph-tool",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.js",
+  "description": "Electron 기반 Mermaid.js 그래프 편집기",
+  "author": "Sangmo Koo <green0614@gmail.com>",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron": "cross-env NODE_ENV=development electron .",
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on tcp:localhost:5173 && npm run electron\"",
+    "electron-build": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --publish=never"
+  },
+  "build": {
+    "appId": "com.mermaid.graphtool",
+    "productName": "Mermaid Graph Tool",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "node_modules/**/*",
+      "public/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis",
+      "forceCodeSigning": false
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@tanstack/react-query": "^5.90.7",
+    "@types/file-saver": "^2.0.7",
+    "@types/fs-extra": "^11.0.4",
+    "bootstrap": "^5.3.8",
+    "cross-env": "^10.0.0",
+    "electron-store": "^10.1.0",
+    "file-saver": "^2.0.5",
+    "fs-extra": "^11.3.1",
+    "lucide-react": "^0.544.0",
+    "mermaid": "^11.12.1",
+    "monaco-editor": "^0.54.0",
+    "react": "^19.1.1",
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "^19.1.1",
+    "react-toastify": "^11.0.5",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.33.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.39.1",
+    "vite": "^7.1.2",
+    "wait-on": "^8.0.4"
+  }
+}
